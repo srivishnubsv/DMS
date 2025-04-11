@@ -10,13 +10,13 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
   const ref = useRef(null);
   const { handleRadioChange, handleCheckboxChange, handleTextChange } = handlers;
   
-  // Set up drop functionality
+  // Set up drop functionality with improved hover detection
   const [{ handlerId, isOver }, drop] = useDrop({
     accept: QUESTION_TYPE,
     collect(monitor) {
       return {
         handlerId: monitor.getHandlerId(),
-        isOver: monitor.isOver() && monitor.canDrop(),
+        isOver: monitor.isOver(),
       }
     },
     hover(item, monitor) {
@@ -43,19 +43,18 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
       
       // Get pixels to the top
       const hoverClientY = clientOffset.y - hoverBoundingRect.top;
-      
-      // Implement smoother logic for making the decision to move
-      // We'll use a "dead zone" approach - only reorder when the cursor
-      // is significantly past the middle point (25% past middle either way)
-      const deadZoneSize = hoverMiddleY * 0.5; // 25% of the height from middle
+
+      // Only perform the move when the cursor is significantly past the middle
+      // For better UX, use a smaller threshold (15% of item height)
+      const threshold = hoverMiddleY * 0.15;
       
       // Dragging downwards
-      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY - deadZoneSize) {
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY + threshold) {
         return;
       }
       
       // Dragging upwards
-      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY + deadZoneSize) {
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY - threshold) {
         return;
       }
       
@@ -65,13 +64,12 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
       // Note: we're mutating the monitor item here!
       // Generally it's better to avoid mutations,
       // but it's good here for the sake of performance
-      // to avoid expensive index searches.
       item.index = hoverIndex;
     },
   });
 
-  // Set up drag functionality with a custom preview
-  const [{ isDragging }, drag, preview] = useDrag({
+  // Improved drag implementation
+  const [{ isDragging }, drag] = useDrag({
     type: QUESTION_TYPE,
     item: () => ({ id: question.id, index }),
     collect: (monitor) => ({
@@ -103,29 +101,26 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
     }
   };
   
-  // Create styles based on drag state
-  const cardStyle = {
-    opacity: isDragging ? 0.01 : 1, // Nearly invisible when dragging, but not completely
-    transform: isDragging ? 'scale(0.98)' : 'scale(1)',
-    cursor: 'move',
-  };
-  
   return (
     <div 
       ref={ref}
       className={`
-        border mb-5 p-5 rounded-xl shadow-sm
-        ${!isDragging ? `bg-gradient-to-b ${getTypeColor(question.type)}` : ''}
-        ${isOver && !isDragging ? 'ring-2 ring-blue-500 ring-opacity-60 shadow-md' : ''}
-        ${isDragging ? 'border-dashed border-gray-300' : ''}
-        relative transition-shadow duration-150 ease-in-out
+        border mb-3 rounded-lg shadow-sm
+        ${!isDragging ? `bg-white` : ''}
+        ${isOver ? 'ring-2 ring-blue-500 shadow-md' : ''}
+        ${isDragging ? 'opacity-50 border-dashed border-gray-400' : ''}
+        relative transition-all duration-100 ease-in-out
+        ${isDragging ? 'transform scale-98' : ''}
       `}
-      style={cardStyle}
+      style={{ 
+        padding: '12px',
+        opacity: isDragging ? 0.4 : 1,  // Make semi-transparent when dragging instead of invisible
+      }}
       data-handler-id={handlerId}
     >
-      {/* Grip handle for drag indicator */}
-      <div className="absolute left-3 top-0 bottom-0 flex items-center text-gray-400 cursor-grab hover:text-gray-600 transition-colors">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      {/* Drag handle indicator */}
+      <div className="absolute left-2 top-0 bottom-0 flex items-center text-gray-400 cursor-grab hover:text-gray-600 transition-colors">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9h8m-8 6h8" />
         </svg>
       </div>
@@ -133,49 +128,44 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
       {/* Remove question button */}
       <button 
         onClick={() => onRemoveQuestion(question.id)}
-        className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors duration-200 rounded-full hover:bg-red-50 p-1"
+        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 transition-colors duration-200 rounded-full hover:bg-red-50 p-0.5"
         aria-label="Remove question"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
           <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
       </button>
       
-      {/* Content that stays visible even during drag - now with just question number */}
-      <div className="mb-3 ml-8 flex items-center">
-        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getTypeBadgeColor(question.type)}`}>
-          {index + 1}
-        </span>
-        {/* Question type label removed */}
-      </div>
-      
-      <h3 className="text-lg font-semibold mb-4 ml-8 text-gray-800">
-        {question.text}
-      </h3>
-      
-      {/* Content that hides during dragging for better performance */}
-      {!isDragging && (
-        <div className="ml-8 bg-white bg-opacity-70 p-3 rounded-lg">
+      {/* Content - Question with number inline */}
+      <div className="ml-6 pr-4">
+        <h3 className="text-base font-medium mb-2 text-gray-800 flex items-start">
+          <span className={`inline-flex items-center justify-center h-5 w-5 rounded-full text-xs font-semibold mr-2 flex-shrink-0 ${getTypeBadgeColor(question.type)}`}>
+            {index + 1}
+          </span>
+          <span className="pt-0.5">{question.text}</span>
+        </h3>
+        
+        {/* Content that fades during dragging but stays visible */}
+        <div className={`bg-gray-50 p-2 rounded-md ml-7 transition-opacity ${isDragging ? 'opacity-25' : 'opacity-100'}`}>
           {renderSurveyPreview(question, responses, handlers)}
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
-// Custom Drop Indicator component
-const DropIndicator = ({ isActive }) => {
-  if (!isActive) return null;
-  
+// Drop Zone indicator component
+const DropZone = ({ isActive }) => {
   return (
-    <div className="h-1 bg-blue-500 rounded-full my-1 transform scale-x-100 transition-transform duration-200" />
+    <div className={`h-2 -mt-1 -mb-1 rounded-full transition-all duration-150 ${isActive ? 'bg-blue-500 scale-100' : 'scale-0'}`} />
   );
 };
 
 const SurveyPreview = ({ questions = [], onRemoveQuestion, onReorderQuestions }) => {
   // Track user responses for preview interaction
   const [responses, setResponses] = useState({});
-  const [dropTarget, setDropTarget] = useState(null); // To track where the drop indicator should appear
+  const [dropTargetIndex, setDropTargetIndex] = useState(null);
+  const [draggedIndex, setDraggedIndex] = useState(null);
   
   // Handle radio button changes
   const handleRadioChange = (questionId, value) => {
@@ -210,12 +200,12 @@ const SurveyPreview = ({ questions = [], onRemoveQuestion, onReorderQuestions })
     });
   };
 
-  // Improved moveQuestion function with smoother updates
+  // Enhanced move question function with better tracking
   const moveQuestion = useCallback((dragIndex, hoverIndex) => {
-    setDropTarget(hoverIndex);
+    setDraggedIndex(dragIndex);
+    setDropTargetIndex(hoverIndex);
     
     onReorderQuestions((prevQuestions) => {
-      // Create new array with the moved question
       const newQuestions = [...prevQuestions];
       const [draggedQuestion] = newQuestions.splice(dragIndex, 1);
       newQuestions.splice(hoverIndex, 0, draggedQuestion);
@@ -225,14 +215,15 @@ const SurveyPreview = ({ questions = [], onRemoveQuestion, onReorderQuestions })
 
   // Reset drop target when dragging ends
   const handleDragEnd = useCallback(() => {
-    setDropTarget(null);
+    setDropTargetIndex(null);
+    setDraggedIndex(null);
   }, []);
 
   if (questions.length === 0) {
     return (
-      <div className="text-center p-10 bg-gradient-to-b from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-xl">
-        <div className="bg-white rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center shadow-sm">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="text-center p-8 bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl">
+        <div className="bg-white rounded-full w-16 h-16 mx-auto mb-3 flex items-center justify-center shadow-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
         </div>
@@ -243,8 +234,13 @@ const SurveyPreview = ({ questions = [], onRemoveQuestion, onReorderQuestions })
   }
 
   return (
-    <DndProvider backend={HTML5Backend} onDragEnd={handleDragEnd}>
+    <DndProvider backend={HTML5Backend}>
       <div className="pb-8">
+        {/* Initial drop zone */}
+        {questions.length > 0 && (
+          <DropZone isActive={dropTargetIndex === 0 && draggedIndex !== null} />
+        )}
+        
         {questions.map((question, index) => (
           <React.Fragment key={question.id}>
             <DraggableQuestion
@@ -259,6 +255,8 @@ const SurveyPreview = ({ questions = [], onRemoveQuestion, onReorderQuestions })
               }}
               onRemoveQuestion={onRemoveQuestion}
             />
+            {/* Insert drop zone after each item */}
+            <DropZone isActive={dropTargetIndex === index + 1 && draggedIndex !== null} />
           </React.Fragment>
         ))}
       </div>

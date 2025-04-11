@@ -34,22 +34,22 @@ function NavBar() {
 
   return (
     <>
-      <nav className="bg-gray-800 text-white p-4">
+      <nav className="bg-gray-800 text-white py-3 px-4">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-lg font-bold">Survey App</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-gray-300">{getUserDisplayName()}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-300">{getUserDisplayName()}</span>
             {user?.isAnonymous ? (
               <button
                 onClick={() => setShowSignIn(true)}
-                className="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded transition-colors"
+                className="bg-blue-500 hover:bg-blue-600 px-3 py-1 text-sm rounded transition-colors"
               >
                 Sign In
               </button>
             ) : (
               <button
                 onClick={handleSignOut}
-                className="bg-red-500 hover:bg-red-600 px-4 py-2 rounded transition-colors"
+                className="bg-red-500 hover:bg-red-600 px-3 py-1 text-sm rounded transition-colors"
               >
                 Sign Out
               </button>

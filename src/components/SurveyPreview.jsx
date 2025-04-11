@@ -10,20 +10,16 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
   const ref = useRef(null);
   const { handleRadioChange, handleCheckboxChange, handleTextChange } = handlers;
   
-  const [{ isDragging }, drag] = useDrag({
-    type: QUESTION_TYPE,
-    item: () => ({ id: question.id, index }),
-    collect: (monitor) => ({
-      isDragging: monitor.isDragging(),
-    }),
-  });
-
-  const [{ isOver }, drop] = useDrop({
+  // Set up drop functionality
+  const [{ handlerId, isOver }, drop] = useDrop({
     accept: QUESTION_TYPE,
-    collect: (monitor) => ({
-      isOver: monitor.isOver(),
-    }),
-    hover: (item, monitor) => {
+    collect(monitor) {
+      return {
+        handlerId: monitor.getHandlerId(),
+        isOver: monitor.isOver() && monitor.canDrop(),
+      }
+    },
+    hover(item, monitor) {
       if (!ref.current) {
         return;
       }
@@ -36,47 +32,99 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
         return;
       }
 
-      // Move the item when the cursor is at 30% of the item height
+      // Determine rectangle on screen
       const hoverBoundingRect = ref.current.getBoundingClientRect();
+      
+      // Get vertical middle
       const hoverMiddleY = (hoverBoundingRect.bottom - hoverBoundingRect.top) / 2;
+      
+      // Determine mouse position
       const clientOffset = monitor.getClientOffset();
+      
+      // Get pixels to the top
       const hoverClientY = clientOffset.y - hoverBoundingRect.top;
-
-      // When dragging more than 30% past the midpoint, perform the move
-      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY * 0.7) {
-        moveQuestion(dragIndex, hoverIndex);
-        item.index = hoverIndex;
+      
+      // Implement smoother logic for making the decision to move
+      // We'll use a "dead zone" approach - only reorder when the cursor
+      // is significantly past the middle point (25% past middle either way)
+      const deadZoneSize = hoverMiddleY * 0.5; // 25% of the height from middle
+      
+      // Dragging downwards
+      if (dragIndex < hoverIndex && hoverClientY < hoverMiddleY - deadZoneSize) {
         return;
       }
-
-      // When dragging less than 30% before the midpoint, perform the move
-      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY * 1.3) {
-        moveQuestion(dragIndex, hoverIndex);
-        item.index = hoverIndex;
+      
+      // Dragging upwards
+      if (dragIndex > hoverIndex && hoverClientY > hoverMiddleY + deadZoneSize) {
         return;
       }
-
-      // When within the middle zone (30% around the midpoint), move immediately
+      
+      // Time to actually perform the action
       moveQuestion(dragIndex, hoverIndex);
+      
+      // Note: we're mutating the monitor item here!
+      // Generally it's better to avoid mutations,
+      // but it's good here for the sake of performance
+      // to avoid expensive index searches.
       item.index = hoverIndex;
     },
+  });
+
+  // Set up drag functionality with a custom preview
+  const [{ isDragging }, drag, preview] = useDrag({
+    type: QUESTION_TYPE,
+    item: () => ({ id: question.id, index }),
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
   });
 
   // Initialize drag-drop refs
   drag(drop(ref));
   
+  // Prepare styling for different states
+  const getTypeColor = (type) => {
+    switch(type) {
+      case 'multipleChoice': return 'from-blue-50 to-blue-100 border-blue-200';
+      case 'checkboxList': return 'from-purple-50 to-purple-100 border-purple-200';
+      case 'shortText': return 'from-green-50 to-green-100 border-green-200';
+      case 'longText': return 'from-amber-50 to-amber-100 border-amber-200';
+      default: return 'from-gray-50 to-gray-100 border-gray-200';
+    }
+  };
+
+  const getTypeBadgeColor = (type) => {
+    switch(type) {
+      case 'multipleChoice': return 'bg-blue-100 text-blue-800';
+      case 'checkboxList': return 'bg-purple-100 text-purple-800';
+      case 'shortText': return 'bg-green-100 text-green-800';
+      case 'longText': return 'bg-amber-100 text-amber-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  // Create styles based on drag state
+  const cardStyle = {
+    opacity: isDragging ? 0.01 : 1, // Nearly invisible when dragging, but not completely
+    transform: isDragging ? 'scale(0.98)' : 'scale(1)',
+    cursor: 'move',
+  };
+  
   return (
     <div 
       ref={ref}
-      className={`border p-4 rounded-lg ${
-        isDragging ? 'bg-blue-50 border-blue-400 border-2 shadow-lg opacity-50' : 
-        isOver ? 'bg-gray-100 border-gray-300' : 'bg-gray-50'
-      } relative mb-4 transition-colors duration-150`}
-      style={{ cursor: 'move' }}
-      data-handler-id={question.id}
+      className={`
+        border mb-5 p-5 rounded-xl shadow-sm
+        ${!isDragging ? `bg-gradient-to-b ${getTypeColor(question.type)}` : ''}
+        ${isOver && !isDragging ? 'ring-2 ring-blue-500 ring-opacity-60 shadow-md' : ''}
+        ${isDragging ? 'border-dashed border-gray-300' : ''}
+        relative transition-shadow duration-150 ease-in-out
+      `}
+      style={cardStyle}
+      data-handler-id={handlerId}
     >
       {/* Grip handle for drag indicator */}
-      <div className="absolute left-2 top-0 bottom-0 flex items-center text-gray-400 cursor-grab">
+      <div className="absolute left-3 top-0 bottom-0 flex items-center text-gray-400 cursor-grab hover:text-gray-600 transition-colors">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9h8m-8 6h8" />
         </svg>
@@ -85,7 +133,7 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
       {/* Remove question button */}
       <button 
         onClick={() => onRemoveQuestion(question.id)}
-        className="absolute top-2 right-2 text-red-500 hover:text-red-700"
+        className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors duration-200 rounded-full hover:bg-red-50 p-1"
         aria-label="Remove question"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -93,24 +141,41 @@ const DraggableQuestion = ({ question, index, moveQuestion, responses, handlers,
         </svg>
       </button>
       
-      <div className="mb-3 ml-8">
-        <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-          {index + 1}. {getQuestionTypeLabel(question.type)}
+      {/* Content that stays visible even during drag - now with just question number */}
+      <div className="mb-3 ml-8 flex items-center">
+        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${getTypeBadgeColor(question.type)}`}>
+          {index + 1}
         </span>
+        {/* Question type label removed */}
       </div>
       
-      <h3 className="text-lg font-medium mb-3 ml-8">{question.text}</h3>
+      <h3 className="text-lg font-semibold mb-4 ml-8 text-gray-800">
+        {question.text}
+      </h3>
       
-      <div className="ml-8">
-        {renderSurveyPreview(question, responses, handlers)}
-      </div>
+      {/* Content that hides during dragging for better performance */}
+      {!isDragging && (
+        <div className="ml-8 bg-white bg-opacity-70 p-3 rounded-lg">
+          {renderSurveyPreview(question, responses, handlers)}
+        </div>
+      )}
     </div>
+  );
+};
+
+// Custom Drop Indicator component
+const DropIndicator = ({ isActive }) => {
+  if (!isActive) return null;
+  
+  return (
+    <div className="h-1 bg-blue-500 rounded-full my-1 transform scale-x-100 transition-transform duration-200" />
   );
 };
 
 const SurveyPreview = ({ questions = [], onRemoveQuestion, onReorderQuestions }) => {
   // Track user responses for preview interaction
   const [responses, setResponses] = useState({});
+  const [dropTarget, setDropTarget] = useState(null); // To track where the drop indicator should appear
   
   // Handle radio button changes
   const handleRadioChange = (questionId, value) => {
@@ -145,42 +210,56 @@ const SurveyPreview = ({ questions = [], onRemoveQuestion, onReorderQuestions })
     });
   };
 
+  // Improved moveQuestion function with smoother updates
   const moveQuestion = useCallback((dragIndex, hoverIndex) => {
-    const reorderedQuestions = [...questions];
-    const [draggedItem] = reorderedQuestions.splice(dragIndex, 1);
-    reorderedQuestions.splice(hoverIndex, 0, draggedItem);
-    onReorderQuestions(reorderedQuestions);
-  }, [questions, onReorderQuestions]);
+    setDropTarget(hoverIndex);
+    
+    onReorderQuestions((prevQuestions) => {
+      // Create new array with the moved question
+      const newQuestions = [...prevQuestions];
+      const [draggedQuestion] = newQuestions.splice(dragIndex, 1);
+      newQuestions.splice(hoverIndex, 0, draggedQuestion);
+      return newQuestions;
+    });
+  }, [onReorderQuestions]);
+
+  // Reset drop target when dragging ends
+  const handleDragEnd = useCallback(() => {
+    setDropTarget(null);
+  }, []);
 
   if (questions.length === 0) {
     return (
-      <div className="text-center p-6 text-gray-500 border-2 border-dashed border-gray-300 rounded-lg">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-        </svg>
-        <p>No questions added yet.</p>
-        <p className="text-sm mt-1">Use the form on the left to add questions.</p>
+      <div className="text-center p-10 bg-gradient-to-b from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-xl">
+        <div className="bg-white rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center shadow-sm">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-700">No questions yet</h3>
+        <p className="text-sm mt-1 text-gray-500">Create your first question using the form on the left</p>
       </div>
     );
   }
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div>
+    <DndProvider backend={HTML5Backend} onDragEnd={handleDragEnd}>
+      <div className="pb-8">
         {questions.map((question, index) => (
-          <DraggableQuestion
-            key={question.id}
-            question={question}
-            index={index}
-            moveQuestion={moveQuestion}
-            responses={responses}
-            handlers={{
-              handleRadioChange,
-              handleCheckboxChange,
-              handleTextChange
-            }}
-            onRemoveQuestion={onRemoveQuestion}
-          />
+          <React.Fragment key={question.id}>
+            <DraggableQuestion
+              question={question}
+              index={index}
+              moveQuestion={moveQuestion}
+              responses={responses}
+              handlers={{
+                handleRadioChange,
+                handleCheckboxChange,
+                handleTextChange
+              }}
+              onRemoveQuestion={onRemoveQuestion}
+            />
+          </React.Fragment>
         ))}
       </div>
     </DndProvider>
@@ -205,19 +284,23 @@ const renderSurveyPreview = (question, responses, handlers) => {
   switch (question.type) {
     case 'multipleChoice':
       return (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {question.options.map((option, i) => (
             <div key={i} className="flex items-center">
-              <input 
-                type="radio" 
-                name={`question-${question.id}`}
-                id={`question-${question.id}-option-${i}`}
-                value={option}
-                checked={responses[question.id] === option}
-                onChange={() => handleRadioChange(question.id, option)}
-                className="mr-2" 
-              />
-              <label htmlFor={`question-${question.id}-option-${i}`}>{option}</label>
+              <div className="relative">
+                <input 
+                  type="radio" 
+                  name={`question-${question.id}`}
+                  id={`question-${question.id}-option-${i}`}
+                  value={option}
+                  checked={responses[question.id] === option}
+                  onChange={() => handleRadioChange(question.id, option)}
+                  className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500 mr-2"
+                />
+              </div>
+              <label htmlFor={`question-${question.id}-option-${i}`} className="text-gray-700 ml-1 text-base">
+                {option}
+              </label>
             </div>
           ))}
         </div>
@@ -226,17 +309,21 @@ const renderSurveyPreview = (question, responses, handlers) => {
     case 'checkboxList':
       const selectedOptions = responses[question.id] || [];
       return (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {question.options.map((option, i) => (
             <div key={i} className="flex items-center">
-              <input 
-                type="checkbox"
-                id={`question-${question.id}-option-${i}`}
-                checked={selectedOptions.includes(option)}
-                onChange={(e) => handleCheckboxChange(question.id, option, e.target.checked)}
-                className="mr-2" 
-              />
-              <label htmlFor={`question-${question.id}-option-${i}`}>{option}</label>
+              <div className="relative">
+                <input 
+                  type="checkbox"
+                  id={`question-${question.id}-option-${i}`}
+                  checked={selectedOptions.includes(option)}
+                  onChange={(e) => handleCheckboxChange(question.id, option, e.target.checked)}
+                  className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 mr-2"
+                />
+              </div>
+              <label htmlFor={`question-${question.id}-option-${i}`} className="text-gray-700 ml-1 text-base">
+                {option}
+              </label>
             </div>
           ))}
         </div>
@@ -249,7 +336,7 @@ const renderSurveyPreview = (question, responses, handlers) => {
           value={responses[question.id] || ''}
           onChange={(e) => handleTextChange(question.id, e.target.value)}
           placeholder="Short answer text" 
-          className="w-full p-2 border rounded" 
+          className="w-full p-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 text-base" 
         />
       );
     
@@ -259,7 +346,7 @@ const renderSurveyPreview = (question, responses, handlers) => {
           value={responses[question.id] || ''}
           onChange={(e) => handleTextChange(question.id, e.target.value)}
           placeholder="Long answer text" 
-          className="w-full p-2 border rounded h-24" 
+          className="w-full p-2 border border-gray-300 rounded-md focus:ring-amber-500 focus:border-amber-500 h-24 text-base" 
         />
       );
     

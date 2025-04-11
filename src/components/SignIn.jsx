@@ -13,6 +13,7 @@ import {
 function SignIn({ isOpen, onClose }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const dialogRef = useRef(null);
 
   // Handle click outside to close
@@ -32,6 +33,13 @@ function SignIn({ isOpen, onClose }) {
     };
   }, [isOpen, onClose]);
 
+  // Clear error when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setError("");
+    }
+  }, [isOpen]);
+
   const handleEmailLogin = async () => {
     try {
       if (auth.currentUser?.isAnonymous) {
@@ -42,7 +50,17 @@ function SignIn({ isOpen, onClose }) {
       }
       onClose();
     } catch (error) {
-      console.error(error.message);
+      if (error.code === "auth/user-not-found") {
+        // Try to create a new user if not found
+        try {
+          await createUserWithEmailAndPassword(auth, email, password);
+          onClose();
+        } catch (signUpError) {
+          setError(signUpError.message);
+        }
+      } else {
+        setError(error.message);
+      }
     }
   };
 
@@ -56,7 +74,7 @@ function SignIn({ isOpen, onClose }) {
       }
       onClose();
     } catch (error) {
-      console.error(error.message);
+      setError(error.message);
     }
   };
 
@@ -65,8 +83,16 @@ function SignIn({ isOpen, onClose }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       {/* Added z-50 class to ensure it appears on top of everything */}
-      <div ref={dialogRef} className="bg-white p-8 max-w-md w-full mx-4 rounded-lg shadow-xl">
-        <h2 className="text-xl font-bold mb-6">Sign In</h2>
+      <div
+        ref={dialogRef}
+        className="bg-white p-8 max-w-md w-full mx-4 rounded-lg shadow-xl"
+      >
+        <h2 className="text-xl font-bold mb-6">Sign In / Sign Up</h2>
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
+          </div>
+        )}
         <div className="space-y-6">
           {/* Google Sign In Button */}
           <button

@@ -1,32 +1,63 @@
-import { useState, useRef, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import QuestionDesigner from './QuestionDesigner';
-import SurveyPreview from './SurveyPreview';
+import { useState, useRef, useEffect } from "react";
+import { v4 as uuidv4 } from "uuid";
+import QuestionDesigner from "./QuestionDesigner";
+import SurveyPreview from "./SurveyPreview";
+import { saveSurvey } from "../services/surveyService";
+import { auth } from "../firebase";
+import { useNavigate } from "react-router-dom";
 
 const SurveyDesigner = () => {
   const [questions, setQuestions] = useState([]);
-  const [surveyTitle, setSurveyTitle] = useState('');
+  const [surveyTitle, setSurveyTitle] = useState("");
   const previewContainerRef = useRef(null);
   const shouldScrollToBottomRef = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
   const addQuestion = (question) => {
     const newQuestion = {
       ...question,
-      id: uuidv4()
+      id: uuidv4(),
     };
     setQuestions([...questions, newQuestion]);
     shouldScrollToBottomRef.current = true;
   };
 
   const removeQuestion = (id) => {
-    setQuestions(questions.filter(q => q.id !== id));
+    setQuestions(questions.filter((q) => q.id !== id));
   };
 
   const handleReorderQuestions = (updateFnOrValue) => {
-    if (typeof updateFnOrValue === 'function') {
+    if (typeof updateFnOrValue === "function") {
       setQuestions(updateFnOrValue);
     } else {
       setQuestions(updateFnOrValue);
+    }
+  };
+
+  const handleSaveSurvey = async () => {
+    if (!auth.currentUser) {
+      // Redirect to sign in or show sign in modal
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setError(null);
+
+      const surveyData = {
+        questions,
+        title: surveyTitle,
+      };
+
+      await saveSurvey(surveyData);
+      // Show success message or redirect
+    } catch (error) {
+      setError("Failed to save survey. Please try again.");
+      console.error("Error saving survey:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -37,7 +68,7 @@ const SurveyDesigner = () => {
         const container = previewContainerRef.current;
         container.scrollTo({
           top: container.scrollHeight,
-          behavior: 'smooth'
+          behavior: "smooth",
         });
         shouldScrollToBottomRef.current = false;
       }, 100); // Small timeout to ensure DOM is updated
@@ -62,7 +93,7 @@ const SurveyDesigner = () => {
             <QuestionDesigner onAddQuestion={addQuestion} />
           </div>
         </div>
-        
+
         {/* Right column - Question Preview (2/3 width) */}
         <div className="w-2/3 bg-gray-100">
           <div className="sticky top-0 bg-white z-10 border-b border-gray-300 shadow-sm">
@@ -78,26 +109,34 @@ const SurveyDesigner = () => {
                   {questions.length} question{questions.length !== 1 ? 's' : ''}
                 </span>
               </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  className="w-full py-1 text-lg font-bold border-b border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"
-                  value={surveyTitle}
-                  onChange={(e) => setSurveyTitle(e.target.value)}
-                  placeholder="Enter survey title..."
-                />
+              <input
+                type="text"
+                className="w-full p-2 text-2xl font-bold border-b-2 border-gray-200 focus:border-blue-500 focus:outline-none bg-transparent"
+                value={surveyTitle}
+                onChange={(e) => setSurveyTitle(e.target.value)}
+                placeholder="Enter survey title..."
+              />
+              <div className="flex justify-between items-center mt-2">
+                <span className="text-gray-600 text-sm">
+                  {questions.length} question{questions.length !== 1 ? "s" : ""}
+                </span>
+                {questions.length > 0 && (
+                  <span className="text-sm text-gray-500">
+                    Drag questions to reorder
+                  </span>
+                )}
               </div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             ref={previewContainerRef}
             className="overflow-y-auto px-4 py-3" 
             style={{ height: 'calc(100vh - 58px)' }} // Adjusted for smaller header
           >
             <div className="max-w-3xl mx-auto">
-              <SurveyPreview 
-                questions={questions} 
+              <SurveyPreview
+                questions={questions}
                 onRemoveQuestion={removeQuestion}
                 onReorderQuestions={handleReorderQuestions}
               />
@@ -105,6 +144,22 @@ const SurveyDesigner = () => {
           </div>
         </div>
       </div>
+      <div className="fixed bottom-8 right-8">
+        <button
+          onClick={handleSaveSurvey}
+          disabled={isSaving || questions.length === 0}
+          className={`px-6 py-3 rounded-lg shadow-lg flex items-center ${
+            isSaving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
+          } text-white transition-colors`}
+        >
+          {isSaving ? "Saving..." : "Save Survey"}
+        </button>
+      </div>
+      {error && (
+        <div className="fixed bottom-20 right-8 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          {error}
+        </div>
+      )}
     </div>
   );
 };

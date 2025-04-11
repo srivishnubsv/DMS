@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { auth } from "../firebase";
-import { onAuthStateChanged, signInAnonymously, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import SignIn from "./SignIn";
 
 function NavBar() {
@@ -9,9 +9,6 @@ function NavBar() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        signInAnonymously(auth);
-      }
       setUser(user);
     });
 
@@ -21,15 +18,11 @@ function NavBar() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
+      // Clear any stored tokens or state
+      localStorage.removeItem("authToken");
     } catch (error) {
       console.error("Error signing out:", error);
     }
-  };
-
-  const getUserDisplayName = () => {
-    if (!user) return "";
-    if (user.isAnonymous) return "Anonymous User";
-    return user.displayName || user.email || "Signed In User";
   };
 
   return (
@@ -37,9 +30,11 @@ function NavBar() {
       <nav className="bg-gray-800 text-white py-3 px-4">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-lg font-bold">Survey App</h1>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-300">{getUserDisplayName()}</span>
-            {user?.isAnonymous ? (
+          <div className="flex items-center gap-4">
+            <span className="text-gray-300">
+              {user ? user.email || "Signed In User" : "Guest"}
+            </span>
+            {!user ? (
               <button
                 onClick={() => setShowSignIn(true)}
                 className="bg-blue-500 hover:bg-blue-600 px-3 py-1 text-sm rounded transition-colors"
